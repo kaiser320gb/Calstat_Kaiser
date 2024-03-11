@@ -1,0 +1,302 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <map>
+#include <ctime>
+#include <iomanip> // For date formatting
+
+#ifdef _WIN32
+#include <cstdlib>
+#define CLEAR_SCREEN "cls"
+#else
+#include <unistd.h>
+#define CLEAR_SCREEN "clear"
+#endif
+
+void recordWorkStatus(const std::string& date, bool wentToWork, std::map<std::string, std::pair<int, int>>& workStats) {
+    std::ifstream inFile("work_status.txt");
+    std::ofstream outFile("temp.txt");
+    if (!outFile) {
+        std::cerr << "Unable to open file for writing!" << std::endl;
+        return;
+    }
+
+    bool found = false;
+    if (inFile) {
+        std::string line;
+        while (std::getline(inFile, line)) {
+            if (line.find(date) != std::string::npos) {
+                found = true;
+                std::string status = wentToWork ? "Went to work" : "Stayed home";
+                if (line.find(status) == std::string::npos) {
+                    std::cout << "The status for this date is different. Do you want to change it? (yes/no): ";
+                    std::string change;
+                    std::cin >> change;
+                    if (change == "yes") {
+                        outFile << date << ": " << status << "\n";
+                        std::cout << "Status changed successfully!" << std::endl;
+                        // Update work stats if status changed
+                        std::string year = date.substr(4, 2); // Extracting year from date
+                        std::string month = date.substr(2, 2); // Extracting month from date
+                        std::string monthYear = month + "-" + year; // Combining month and year
+                        if (wentToWork)
+                            workStats[monthYear].first++;
+                        else
+                            workStats[monthYear].second++;
+                        continue;
+                    }
+                }
+            }
+            outFile << line << std::endl;
+        }
+    }
+
+    if (!found) {
+        std::cout << "Date not found in file!" << std::endl;
+        outFile << date << ": " << (wentToWork ? "Went to work" : "Stayed home") << "\n";
+        std::cout << "New entry added successfully!" << std::endl;
+        // Update work stats for new entry
+        std::string year = date.substr(4, 2); // Extracting year from date
+        std::string month = date.substr(2, 2); // Extracting month from date
+        std::string monthYear = month + "-" + year; // Combining month and year
+        if (wentToWork)
+            workStats[monthYear].first++;
+        else
+            workStats[monthYear].second++;
+    }
+
+    inFile.close();
+    outFile.close();
+
+    std::remove("work_status.txt");
+    std::rename("temp.txt", "work_status.txt");
+}
+
+bool isFileExist(const std::string& filename) {
+    std::ifstream file(filename);
+    return file.good();
+}
+
+bool isDateExist(const std::string& date) {
+    std::ifstream file("work_status.txt");
+    if (!file.is_open()) {
+        std::ofstream outFile("work_status.txt");
+        if (!outFile) {
+            std::cerr << "Unable to create file work_status.txt!" << std::endl;
+            return false;
+        }
+        outFile.close();
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.find(date) != std::string::npos) {
+            file.close();
+            return true;
+        }
+    }
+    file.close();
+    return false;
+}
+
+void loadWorkStats(std::map<std::string, std::pair<int, int>>& workStats) {
+    workStats.clear(); // Clear existing stats before loading
+    std::ifstream file("work_status.txt");
+    if (!file.is_open()) {
+        std::ofstream outFile("work_status.txt");
+        if (!outFile) {
+            std::cerr << "Unable to create file work_status.txt!" << std::endl;
+            return;
+        }
+        outFile.close();
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string date = line.substr(0, 6); // Extracting date
+        std::string year = date.substr(4, 2); // Extracting year from date
+        std::string month = date.substr(2, 2); // Extracting month from date
+        std::string monthYear = month + "-" + year; // Combining month and year
+        if (line.find("Went to work") != std::string::npos)
+            workStats[monthYear].first++;
+        else if (line.find("Stayed home") != std::string::npos)
+            workStats[monthYear].second++;
+    }
+    file.close();
+}
+
+void displayMonthStats(const std::map<std::string, std::pair<int, int>>& workStats) {
+    std::cout << "Month\t\tDays Worked\tDays Stayed Home\n";
+    for (const auto& entry : workStats) {
+        std::string monthYear = entry.first;
+        int daysWorked = entry.second.first;
+        int daysStayedHome = entry.second.second;
+        std::cout << monthYear << "\t\t" << daysWorked << "\t\t" << daysStayedHome << "\n";
+    }
+}
+
+void displayFileContents() {
+    std::ifstream file("work_status.txt");
+    if (!file) {
+        std::cerr << "Unable to open file work_status.txt!" << std::endl;
+        return;
+    }
+
+    std::cout << "Date\t\tStatus\n";
+    std::string line;
+    while (std::getline(file, line)) {
+        std::string date = line.substr(0, 6); // Extracting date
+        std::string year = "20" + date.substr(4, 2); // Extracting year from date
+        std::string month = date.substr(2, 2); // Extracting month from date
+        std::string day = date.substr(0, 2); // Extracting day from date
+        std::string formattedDate = day + "-" + month + "-" + year;
+        size_t statusStart = line.find(": ") + 2; // Find the start of status substring
+        std::string status = line.substr(statusStart); // Extracting status
+        std::cout << std::left << std::setw(12) << formattedDate << "\t" << status << std::endl;
+    }
+    file.close();
+}
+
+std::string getCurrentDate() {
+    time_t now = time(0);
+    tm timeinfo;
+#ifdef _WIN32
+    localtime_s(&timeinfo, &now);
+#else
+    localtime_r(&now, &timeinfo);
+#endif
+    char buffer[11]; // Adjusted buffer size for dd-mm-yyyy format
+    strftime(buffer, sizeof(buffer), "%d-%m-%Y", &timeinfo);
+    return std::string(buffer);
+}
+
+int main() {
+    std::map<std::string, std::pair<int, int>> workStats; // To store work stats for each month
+    std::string dateInput, wentToWorkInput;
+    int choice;
+
+    if (!isFileExist("work_status.txt")) {
+        std::ofstream outFile("work_status.txt");
+        if (!outFile) {
+            std::cerr << "Unable to create file work_status.txt!" << std::endl;
+            return 1;
+        }
+        outFile.close();
+    }
+
+    while (true) {
+        std::system(CLEAR_SCREEN);
+        std::cout << "_________        .__            __          __     ____  __.      .__                     \n";
+        std::cout << "\\_   ___ \\_____  |  |   _______/  |______ _/  |_  |    |/ _|____  |__| ______ ___________ \n";
+        std::cout << "/    \\  \\/\\__  \\ |  |  /  ___/\\   __\\__  \\\\   __\\ |      < \\__  \\ |  |/  ___// __ \\_  __ \\\n";
+        std::cout << "\\     \\____/ __ \\|  |__\\___ \\  |  |  / __ \\|  |   |    |  \\ / __ \\|  |\\___ \\  ___/|  | \/\n";
+        std::cout << " \\______  (____  /____/____  > |__| (____  /__|   |____|__ (____  /__/____  >\\___  >__|   \n";
+        std::cout << "        \\/     \\/          \\/            \\/               \\/    \\/        \\/     \\/        \n";
+        std::cout << "+-----------------------------+\n";
+        std::cout << "|       Calstat Kaiser        |\n";
+        std::cout << "+-----------------------------+\n";
+        std::cout << "| Choose an option:           |\n";
+        std::cout << "| 1. Use current date         |\n";
+        std::cout << "| 2. Enter date manually      |\n";
+        std::cout << "| 3. Display monthly stats    |\n";
+        std::cout << "| 4. Display data entries     |\n";
+        std::cout << "| 5. Exit                     |\n";
+        std::cout << "+-----------------------------+\n";
+        std::cout << "Current date: " << getCurrentDate() << std::endl;
+        std::cout << "Your choice: ";
+        std::cin >> choice;
+
+        switch (choice) {
+        case 1:
+            dateInput = getCurrentDate();
+            if (isDateExist(dateInput)) {
+                bool wentToWork;
+                std::string status;
+                std::ifstream inFile("work_status.txt");
+                if (inFile) {
+                    std::string line;
+                    while (std::getline(inFile, line)) {
+                        if (line.find(dateInput) != std::string::npos) {
+                            status = line.substr(8); // Extracting status
+                            break;
+                        }
+                    }
+                    inFile.close();
+                }
+                std::cout << "You already recorded your status for this date as: " << status << std::endl;
+                std::cout << "Did you change your status? (yes/no): ";
+                std::cin >> wentToWorkInput;
+                if (wentToWorkInput == "yes") {
+                    std::cout << "Did you go to work on this day? (yes/no): ";
+                    std::cin >> wentToWorkInput;
+                    wentToWork = (wentToWorkInput == "yes");
+                    recordWorkStatus(dateInput, wentToWork, workStats);
+                }
+            }
+            else {
+                std::cout << "Did you go to work on this day? (yes/no): ";
+                std::cin >> wentToWorkInput;
+                bool wentToWork = (wentToWorkInput == "yes");
+                recordWorkStatus(dateInput, wentToWork, workStats);
+            }
+            break;
+        case 2:
+            std::cout << "Enter the date (dd-mm-yyyy): ";
+            std::cin >> dateInput;
+            if (isDateExist(dateInput)) {
+                bool wentToWork;
+                std::string status;
+                std::ifstream inFile("work_status.txt");
+                if (inFile) {
+                    std::string line;
+                    while (std::getline(inFile, line)) {
+                        if (line.find(dateInput) != std::string::npos) {
+                            status = line.substr(8); // Extracting status
+                            break;
+                        }
+                    }
+                    inFile.close();
+                }
+                std::cout << "You already recorded your status for this date as: " << status << std::endl;
+                std::cout << "Did you change your status? (yes/no): ";
+                std::cin >> wentToWorkInput;
+                if (wentToWorkInput == "yes") {
+                    std::cout << "Did you go to work on this day? (yes/no): ";
+                    std::cin >> wentToWorkInput;
+                    wentToWork = (wentToWorkInput == "yes");
+                    recordWorkStatus(dateInput, wentToWork, workStats);
+                }
+            }
+            else {
+                std::cout << "Did you go to work on this day? (yes/no): ";
+                std::cin >> wentToWorkInput;
+                bool wentToWork = (wentToWorkInput == "yes");
+                recordWorkStatus(dateInput, wentToWork, workStats);
+            }
+            break;
+        case 3:
+            loadWorkStats(workStats);
+            std::cout << "Monthly Work Statistics:\n";
+            displayMonthStats(workStats);
+            std::cout << "Press Enter to continue...";
+            std::cin.ignore();
+            std::cin.get();
+            break;
+        case 4:
+            displayFileContents();
+            std::cout << "Press Enter to continue...";
+            std::cin.ignore();
+            std::cin.get();
+            break;
+        case 5:
+            return 0;
+        default:
+            std::cout << "Invalid choice. Please try again.\n";
+            continue;
+        }
+    }
+
+    return 0;
+}
